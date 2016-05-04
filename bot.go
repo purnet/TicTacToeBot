@@ -189,26 +189,39 @@ func MiniMax(gameState []string, player string, move int, turn string, level int
 	}
 }
 
+type ChannelResult struct {
+	Position int
+	Score    int
+}
+
 func MakeBestMove(gameState []string, player string) (pos int) {
 	availableMoves := make(map[int]int)
 	gs := make([]string, 9, 9)
 	copy(gs, gameState)
 	var wg sync.WaitGroup
-	ch := make(chan int)
+	ch := make(chan ChannelResult)
 	for i, s := range gameState {
 		if s == "" {
-			go func(c chan int, j int) {
-				wg.Add(1)
-				c <- MiniMax(gs, player, i, player, 0)
-				fmt.Printf("Chanel for moves called pos %v now done\n", j)
-				wg.Done()
+			wg.Add(1)
+			go func(c chan ChannelResult, pos int) {
+				defer wg.Done()
+				score := MiniMax(gs, player, i, player, 0)
+				fmt.Printf("Chanel for moves called pos %v now done\n", pos)
+				c <- ChannelResult{pos, score}
 			}(ch, i)
-
-			availableMoves[i] = <-ch
 		}
 	}
-	close(ch)
-	wg.Wait()
+
+	go func() {
+		wg.Wait()
+		fmt.Println("Closing Channel")
+		close(ch)
+	}()
+
+	for c := range ch {
+		availableMoves[c.Position] = c.Score
+	}
+
 	var bestScore int
 	scoreSet := false
 	for move, score := range availableMoves {
@@ -310,7 +323,7 @@ func main() {
 	b.SetBaseUrl(os.Getenv("MERKNERA_URL"))
 	b.SetToken("11111111111111111111111111111111111111111111111111")
 
-	if b.Register("TICTACTOE", "BOTBOT_BOTTY", "", "1.10.0", "", "") {
+	if b.Register("TICTACTOE", os.Getenv("BOTNAME"), os.Getenv("MY_URL"), "1.11.0", "", "") {
 		fmt.Println("Registration Complete... Tic Tac Toe Has begun")
 	}
 
