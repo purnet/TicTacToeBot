@@ -11,6 +11,10 @@ import (
 	"bytes"
 	"encoding/json"
 
+	"os"
+
+	"sync"
+
 	"github.com/purnet/TicTacToeBot/models"
 )
 
@@ -189,11 +193,22 @@ func MakeBestMove(gameState []string, player string) (pos int) {
 	availableMoves := make(map[int]int)
 	gs := make([]string, 9, 9)
 	copy(gs, gameState)
+	var wg sync.WaitGroup
+	ch := make(chan int)
 	for i, s := range gameState {
 		if s == "" {
-			availableMoves[i] = MiniMax(gs, player, i, player, 0)
+			go func(c chan int, j int) {
+				wg.Add(1)
+				c <- MiniMax(gs, player, i, player, 0)
+				fmt.Printf("Chanel for moves called pos %v now done\n", j)
+				wg.Done()
+			}(ch, i)
+
+			availableMoves[i] = <-ch
 		}
 	}
+	close(ch)
+	wg.Wait()
 	var bestScore int
 	scoreSet := false
 	for move, score := range availableMoves {
@@ -217,6 +232,7 @@ func (b TicTacToeBot) NextMove(rpcReq models.ServerRpcRequest) []byte {
 	fmt.Printf("Game: %v You are playing %s \n", params.GameId, params.Mark)
 	PrintGameState(params.GameState)
 	myMove := MakeBestMove(params.GameState, params.Mark)
+	fmt.Printf("Game: %v your chosen move is position %v \n", params.GameId, myMove)
 	pos := models.NextMoveResponseParams{myMove}
 	rpc := CreateRPCResponse(pos, "", rpcReq.Id)
 	return rpc
@@ -236,7 +252,7 @@ func (b TicTacToeBot) Complete(rpcReq models.ServerRpcRequest) []byte {
 	} else {
 		tellMe = "Better Luck next time fool.."
 	}
-	fmt.Printf("%s GameId: %v where you were playing %s", tellMe, params.GameId, params.Mark)
+	fmt.Printf("%s GameId: %v where you were playing %s \n", tellMe, params.GameId, params.Mark)
 	PrintGameState(params.GameState)
 	s := models.StatusResponseParams{"OK"}
 	rpc := CreateRPCResponse(s, "", rpcReq.Id)
@@ -270,20 +286,15 @@ func (b *TicTacToeBot) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch rpcRequest.Method {
 	case "Status.Ping":
 		body = b.StatusPing(rpcRequest.Id)
-		fmt.Println(string(body))
 		rw.Write(body)
 	case "TicTacToe.NextMove":
-		fmt.Println("next move called")
 		body = b.NextMove(rpcRequest)
-		fmt.Println(string(body))
 		rw.Write(body)
 	case "TicTacToe.Error":
 		body = b.Error(rpcRequest)
-		fmt.Println(string(body))
 		rw.Write(body)
 	case "TicTacToe.Complete":
-		body = b.Error(rpcRequest)
-		fmt.Println(string(body))
+		body = b.Complete(rpcRequest)
 		rw.Write(body)
 	default:
 		fmt.Printf("Request method %s is of unknown type\n", rpcRequest)
@@ -296,10 +307,10 @@ func main() {
 
 	var b GameBot
 	b = &TicTacToeBot{}
-	b.SetBaseUrl("http://7c5de374.ngrok.io/rpc")
+	b.SetBaseUrl(os.Getenv("MERKNERA_URL"))
 	b.SetToken("11111111111111111111111111111111111111111111111111")
 
-	if b.Register("TICTACTOE", "TEIGHERBOT_TicTacToe", "http://871b24c4.ngrok.io", "1.3.0", "", "") {
+	if b.Register("TICTACTOE", "BOTBOT_BOTTY", "", "1.10.0", "", "") {
 		fmt.Println("Registration Complete... Tic Tac Toe Has begun")
 	}
 
