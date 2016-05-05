@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 
 	"log"
 	"net/http"
@@ -12,8 +13,6 @@ import (
 	"encoding/json"
 
 	"os"
-
-	"sync"
 
 	"github.com/purnet/TicTacToeBot/models"
 )
@@ -150,11 +149,11 @@ func isGameOver(gs []string) (bool, string) {
 	}
 }
 
-func MiniMax(gameState []string, player string, move int, turn string, level int) int {
-	gs := make([]string, 9, 9)
-	copy(gs, gameState)
-	gs[move] = turn
-	gameOver, piece := isGameOver(gs)
+func MiniMax(stateOfGame []string, player string, move int, turn string, level int) int {
+	sog := make([]string, 9, 9)
+	copy(sog, stateOfGame)
+	sog[move] = turn
+	gameOver, piece := isGameOver(sog)
 	if gameOver {
 		switch piece {
 		case "":
@@ -171,15 +170,15 @@ func MiniMax(gameState []string, player string, move int, turn string, level int
 		} else {
 			newTurn = "X"
 		}
-		availableMoves := make(map[int]int)
-		for i, s := range gs {
+		moves := make(map[int]int)
+		for i, s := range sog {
 			if s == "" {
-				availableMoves[i] = MiniMax(gs, player, i, newTurn, level-1)
+				moves[i] = MiniMax(sog, player, i, newTurn, level-1)
 			}
 		}
 		var bestScore int
 		scoreSet := false
-		for _, score := range availableMoves {
+		for _, score := range moves {
 			if !scoreSet || (score > bestScore && newTurn == player) || (newTurn != player && score < bestScore) {
 				bestScore = score
 				scoreSet = true
@@ -194,21 +193,19 @@ type ChannelResult struct {
 	Score    int
 }
 
-func MakeBestMove(gameState []string, player string) (pos int) {
+func MakeBestMove(gameState []string, player string, gameId int) (pos int) {
 	availableMoves := make(map[int]int)
-	gs := make([]string, 9, 9)
-	copy(gs, gameState)
 	var wg sync.WaitGroup
 	ch := make(chan ChannelResult)
 	for i, s := range gameState {
 		if s == "" {
 			wg.Add(1)
-			go func(c chan ChannelResult, pos int) {
+
+			go func(c chan ChannelResult, pos int, state []string) {
 				defer wg.Done()
-				score := MiniMax(gs, player, i, player, 0)
-				fmt.Printf("Chanel for moves called pos %v now done\n", pos)
+				score := MiniMax(state, player, pos, player, 0)
 				c <- ChannelResult{pos, score}
-			}(ch, i)
+			}(ch, i, gameState)
 		}
 	}
 
@@ -219,12 +216,14 @@ func MakeBestMove(gameState []string, player string) (pos int) {
 	}()
 
 	for c := range ch {
+		fmt.Printf("Channel read: %d - %d\n", c.Position, c.Score)
 		availableMoves[c.Position] = c.Score
 	}
 
 	var bestScore int
 	scoreSet := false
 	for move, score := range availableMoves {
+		fmt.Printf("Game:%v Position: %v has score of %v \n", gameId, move, score)
 		if !scoreSet || score > bestScore {
 			bestScore = score
 			pos = move
@@ -244,7 +243,7 @@ func (b TicTacToeBot) NextMove(rpcReq models.ServerRpcRequest) []byte {
 	json.Unmarshal(byteResult, &params)
 	fmt.Printf("Game: %v You are playing %s \n", params.GameId, params.Mark)
 	PrintGameState(params.GameState)
-	myMove := MakeBestMove(params.GameState, params.Mark)
+	myMove := MakeBestMove(params.GameState, params.Mark, params.GameId)
 	fmt.Printf("Game: %v your chosen move is position %v \n", params.GameId, myMove)
 	pos := models.NextMoveResponseParams{myMove}
 	rpc := CreateRPCResponse(pos, "", rpcReq.Id)
@@ -323,7 +322,7 @@ func main() {
 	b.SetBaseUrl(os.Getenv("MERKNERA_URL"))
 	b.SetToken("11111111111111111111111111111111111111111111111111")
 
-	if b.Register("TICTACTOE", os.Getenv("BOTNAME"), os.Getenv("MY_URL"), "1.11.0", "", "") {
+	if b.Register("TICTACTOE", os.Getenv("BOTNAME"), os.Getenv("MY_URL"), "2.1", "", "") {
 		fmt.Println("Registration Complete... Tic Tac Toe Has begun")
 	}
 
