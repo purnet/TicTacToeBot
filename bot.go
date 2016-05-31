@@ -320,7 +320,7 @@ func main() {
 	var b GameBot
 	b = &TicTacToeBot{}
 	b.SetBaseUrl(os.Getenv("MERKNERA_URL"))
-	b.SetToken("11111111111111111111111111111111111111111111111111")
+	b.SetToken(os.Getenv("TOKEN"))
 
 	if b.Register("TICTACTOE", os.Getenv("BOTNAME"), os.Getenv("MY_URL"), "2.1", "", "") {
 		fmt.Println("Registration Complete... Tic Tac Toe Has begun")
