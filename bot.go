@@ -309,7 +309,7 @@ func (b *TicTacToeBot) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		body = b.Complete(rpcRequest)
 		rw.Write(body)
 	default:
-		fmt.Printf("Request method %s is of unknown type\n", rpcRequest)
+		fmt.Printf("Request method %s is of unknown type\n", rpcRequest.Method)
 	}
 
 	return
